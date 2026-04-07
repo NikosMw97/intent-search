@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 72" fill="none">
+  <defs>
+
+    <!-- Squircle background -->
+    <linearGradient id="bg" x1="0" y1="0" x2="72" y2="72" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#1e0b3a"/>
+      <stop offset="100%" stop-color="#060c1f"/>
+    </linearGradient>
+
+    <!-- Star fill: white top → light violet bottom -->
+    <linearGradient id="star" x1="36" y1="13" x2="36" y2="59" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#c4b5fd"/>
+    </linearGradient>
+
+    <!-- Star glow -->
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0.55
+                0 0 1 0 0.35
+                0 0 1 0 1
+                0 0 0 0.55 0" result="colored"/>
+      <feMerge>
+        <feMergeNode in="colored"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Squircle drop shadow -->
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#7c3aed" flood-opacity="0.4"/>
+    </filter>
+
+  </defs>
+
+  <!-- ── Mark: 72 × 72 squircle ── -->
+
+  <!-- Background -->
+  <rect x="0.5" y="0.5" width="71" height="71" rx="18" ry="18"
+        fill="url(#bg)" filter="url(#shadow)"/>
+
+  <!-- Border -->
+  <rect x="0.5" y="0.5" width="71" height="71" rx="18" ry="18"
+        fill="none" stroke="white" stroke-opacity="0.1" stroke-width="1"/>
+
+  <!-- Four-pointed star
+       Center: (36, 36)
+       Outer R=20 → top(36,16) right(56,36) bottom(36,56) left(16,36)
+       Inner r=7.5 at 45° → (±5.30) → (41.3,30.7) (41.3,41.3) (30.7,41.3) (30.7,30.7) -->
+  <path
+    d="M36 16 L41.3 30.7 L56 36 L41.3 41.3 L36 56 L30.7 41.3 L16 36 L30.7 30.7 Z"
+    fill="url(#star)"
+    filter="url(#glow)"/>
+
+  <!-- ── Wordmark ── -->
+
+  <!-- "intent" — weight 800, tight tracking -->
+  <text
+    x="90" y="44"
+    font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+    font-size="36"
+    font-weight="800"
+    letter-spacing="-1.2"
+    fill="white">intent</text>
+
+  <!-- Tagline -->
+  <text
+    x="91" y="60"
+    font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif"
+    font-size="9"
+    font-weight="500"
+    letter-spacing="3.5"
+    fill="white"
+    fill-opacity="0.28">THE END OF SEARCH</text>
+
+</svg>
