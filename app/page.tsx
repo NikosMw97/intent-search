@@ -11,8 +11,10 @@ import Logo from '@/components/Logo';
 import FilterBar from '@/components/FilterBar';
 import CompareModal from '@/components/CompareModal';
 import RefinementBar from '@/components/RefinementBar';
+import AuctionRoom from '@/components/AuctionRoom';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
+import { useAuction } from '@/hooks/useAuction';
 import type { FilterState, RankedResult } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
@@ -68,6 +70,8 @@ export default function Home() {
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   const [showCompare, setShowCompare] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const auction = useAuction(intent);
 
   // ── URL sharing: read ?q= on load ────────────────────────────────────────
   useEffect(() => {
@@ -276,6 +280,19 @@ export default function Home() {
                 {/* Refinement bar (only after results are done) */}
                 {isDone && (
                   <RefinementBar onRefine={handleRefine} isLoading={isStreaming} />
+                )}
+
+                {/* Live auction room */}
+                {(isDone || isStreaming) && (
+                  <AuctionRoom
+                    status={auction.status}
+                    events={auction.events}
+                    bestPrice={auction.bestPrice}
+                    bestProvider={auction.bestProvider}
+                    winnerLogo={auction.winnerLogo}
+                    onStart={auction.start}
+                    onReset={auction.reset}
+                  />
                 )}
               </div>
             </aside>
