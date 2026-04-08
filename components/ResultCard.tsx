@@ -2,6 +2,7 @@
 
 import type { RankedResult } from '@/lib/types';
 import { predictPrice } from '@/lib/pricePrediction';
+import { getReputation, getReputationColor, getBadgeLabel } from '@/lib/providerReputation';
 
 interface Props {
   result: RankedResult;
@@ -41,6 +42,9 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
 
   // Price prediction — use category from offer if available, fallback to providerName
   const prediction = predictPrice(offer.providerName, offer.price);
+
+  // Provider reputation
+  const rep = getReputation(offer.providerName);
 
   return (
     <div
@@ -85,6 +89,18 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
               <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">{offer.name}</h3>
               <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-xs text-white/40">{offer.providerLogo} {offer.providerName}</span>
+                {rep && (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-mono font-bold ${getReputationColor(rep.overall)}`}>{rep.overall}</span>
+                    {rep.badge && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
+                        rep.badge === 'verified' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+                        rep.badge === 'trusted'  ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                        'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
+                      }`}>{getBadgeLabel(rep.badge)}</span>
+                    )}
+                  </div>
+                )}
                 {offer.rating && <span className="text-xs text-yellow-400/80">★ {offer.rating.toFixed(1)}</span>}
                 {offer.reviewCount && <span className="text-xs text-white/25">({offer.reviewCount.toLocaleString()})</span>}
                 {/* Follow button */}

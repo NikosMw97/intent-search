@@ -15,15 +15,19 @@ import AuctionRoom from '@/components/AuctionRoom';
 import EscrowModal from '@/components/EscrowModal';
 import BundleResults from '@/components/BundleResults';
 import CounterOfferBar from '@/components/CounterOfferBar';
+import NegotiationPanel from '@/components/NegotiationPanel';
+import IntentExplainer from '@/components/IntentExplainer';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { useBundleSearch } from '@/hooks/useBundleSearch';
 import { useFollowedProviders } from '@/hooks/useFollowedProviders';
+import { useNegotiation } from '@/hooks/useNegotiation';
 import { looksLikeBundle } from '@/lib/bundleHeuristic';
 import { getPromotedProviders } from '@/lib/promotedProviders';
-import type { FilterState, RankedResult } from '@/lib/types';
+import { MOODS, applyMood } from '@/lib/moodMapper';
+import type { FilterState, RankedResult, ParsedIntent } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
 
@@ -91,6 +95,7 @@ export default function Home() {
   const { intent, results, stats, status, error, searchTimeMs, search, reset } = useIntentStream();
   const { history, add: addToHistory, clear: clearHistory } = useIntentHistory();
   const { isFollowing, toggle: toggleFollow } = useFollowedProviders();
+  const negotiation = useNegotiation();
 
   const [lastQuery, setLastQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -100,6 +105,8 @@ export default function Home() {
   const [escrowOffer, setEscrowOffer] = useState<{
     name: string; price: number; currency: string; providerName: string; providerLogo: string;
   } | null>(null);
+  const [activeMood, setActiveMood] = useState<string | null>(null);
+  const [usedMoodId, setUsedMoodId] = useState<string | null>(null);
 
   const auction = useAuction(intent);
   const { triggeredCount } = useSubscriptions();
@@ -135,18 +142,24 @@ export default function Home() {
   }, [status]);
 
   const handleSearch = useCallback((query: string) => {
-    setLastQuery(query);
+    // Apply mood modifier if active
+    const moodId = activeMood;
+    const finalQuery = moodId ? applyMood(query, moodId) : query;
+    setUsedMoodId(moodId);
+    setActiveMood(null);
+
+    setLastQuery(finalQuery);
     window.history.replaceState({}, '', '/');
     // If the query looks like a bundle, run bundle search alongside normal search
-    if (looksLikeBundle(query)) {
+    if (looksLikeBundle(finalQuery)) {
       setShowBundle(true);
-      bundle.search(query);
+      bundle.search(finalQuery);
     } else {
       setShowBundle(false);
       bundle.reset();
     }
-    search(query);
-  }, [search, bundle]);
+    search(finalQuery);
+  }, [search, bundle, activeMood]);
 
   const handleRefine = useCallback((refinement: string) => {
     search(lastQuery, refinement);
@@ -155,11 +168,13 @@ export default function Home() {
   const handleReset = useCallback(() => {
     reset();
     bundle.reset();
+    negotiation.reset();
     setLastQuery('');
     setCompareIds(new Set());
     setShowBundle(false);
+    setUsedMoodId(null);
     window.history.replaceState({}, '', '/');
-  }, [reset, bundle]);
+  }, [reset, bundle, negotiation]);
 
   const toggleCompare = useCallback((id: string) => {
     setCompareIds((prev) => {
@@ -182,6 +197,21 @@ export default function Home() {
     handleSearch(newQuery);
   }, [lastQuery, handleSearch]);
 
+  const handleIntentUpdate = useCallback((updated: Partial<ParsedIntent>) => {
+    // Build a hint to append to the original query to guide re-parsing
+    const hints: string[] = [];
+    if (updated.category) hints.push(`(category: ${updated.category})`);
+    if (updated.budget !== undefined) {
+      if (updated.budget) hints.push(`under €${updated.budget}`);
+    }
+    if (updated.keywords && updated.keywords.length > 0) {
+      hints.push(updated.keywords.join(' '));
+    }
+    const baseQuery = intent?.raw ?? lastQuery;
+    const newQuery = hints.length > 0 ? `${baseQuery} ${hints.join(' ')}` : baseQuery;
+    handleSearch(newQuery);
+  }, [intent, lastQuery, handleSearch]);
+
   const filteredResults = applyFilters(results, filters);
   const promotedResults = applyPromotion(filteredResults);
   const compareItems = results.filter((r) => compareIds.has(r.offer.id));
@@ -191,8 +221,11 @@ export default function Home() {
   const hasResults = results.length > 0;
   const showResults = hasResults || isStreaming;
 
-  // Best price among current results for counter-offer
+  // Best price among current results for counter-offer and negotiation
   const bestPrice = results.length > 0 ? Math.min(...results.map((r) => r.offer.price)) : null;
+
+  // Mood label for the used mood
+  const usedMood = usedMoodId ? MOODS.find((m) => m.id === usedMoodId) : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -254,6 +287,25 @@ export default function Home() {
 
             <div className="w-full animate-slide-up" style={{ animationDelay: '0.1s' }}>
               <SearchBox onSearch={handleSearch} isLoading={false} />
+
+              {/* Mood selector */}
+              <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                {MOODS.map((mood) => (
+                  <button
+                    key={mood.id}
+                    onClick={() => setActiveMood(activeMood === mood.id ? null : mood.id)}
+                    title={mood.description}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs transition-all ${
+                      activeMood === mood.id
+                        ? 'border-purple-500/50 bg-purple-500/15 text-purple-300'
+                        : 'border-white/8 text-white/35 hover:border-purple-500/25 hover:text-white/60'
+                    }`}
+                  >
+                    <span>{mood.emoji}</span>
+                    <span>{mood.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* How it works */}
@@ -332,6 +384,11 @@ export default function Home() {
               <div className="p-5 lg:sticky lg:top-[65px] lg:max-h-[calc(100vh-65px)] lg:overflow-y-auto space-y-5">
                 <SearchBox onSearch={handleSearch} isLoading={isStreaming} />
 
+                {/* Intent Explainer — shown when intent is available */}
+                {intent && (
+                  <IntentExplainer intent={intent} onUpdate={handleIntentUpdate} />
+                )}
+
                 {intent && (
                   <IntentSummary
                     intent={intent}
@@ -359,6 +416,24 @@ export default function Home() {
                     onAcceptBid={setEscrowOffer}
                   />
                 )}
+
+                {/* Negotiation panel — shown below AuctionRoom */}
+                {(isDone || isStreaming) && (
+                  <NegotiationPanel
+                    query={lastQuery}
+                    startPrice={bestPrice}
+                    budget={intent?.budget ?? bestPrice ?? 0}
+                    status={negotiation.status}
+                    steps={negotiation.steps}
+                    dealPrice={negotiation.dealPrice}
+                    onStart={() => negotiation.negotiate(
+                      lastQuery,
+                      bestPrice ?? 0,
+                      intent?.budget ?? bestPrice ?? 0,
+                    )}
+                    onReset={negotiation.reset}
+                  />
+                )}
               </div>
             </aside>
 
@@ -373,12 +448,20 @@ export default function Home() {
                       : `Top ${promotedResults.length} results`
                     }
                   </h2>
-                  {stats && (
-                    <p className="text-xs text-white/35 mt-0.5">
-                      {stats.totalProviders} providers competed · {stats.totalOffers} offers analysed
-                      {isDone && ` · ${(searchTimeMs / 1000).toFixed(1)}s`}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    {stats && (
+                      <p className="text-xs text-white/35">
+                        {stats.totalProviders} providers competed · {stats.totalOffers} offers analysed
+                        {isDone && ` · ${(searchTimeMs / 1000).toFixed(1)}s`}
+                      </p>
+                    )}
+                    {/* Mood badge */}
+                    {usedMood && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-purple-500/30 bg-purple-500/10 text-purple-300 text-xs">
+                        {usedMood.emoji} {usedMood.label}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">

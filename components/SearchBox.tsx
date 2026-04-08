@@ -25,9 +25,11 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
   const [interimText, setInterimText] = useState('');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [imageStatus, setImageStatus] = useState<'idle' | 'identifying' | 'error'>('idle');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Voice input ──────────────────────────────────────────────────────────
   const { isListening, isSupported, start: startVoice, stop: stopVoice, status: voiceStatus } = useVoiceInput({
@@ -124,13 +126,61 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
     else startVoice();
   };
 
-  const displayValue = isListening ? interimText : query;
+  // ── Image identification ─────────────────────────────────────────────────
+  const handleCameraClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset file input so same file can be re-selected
+    e.target.value = '';
+
+    setImageStatus('identifying');
+    setShowSuggestions(false);
+
+    try {
+      const fd = new FormData();
+      fd.append('image', file);
+      const res = await fetch('/api/identify', { method: 'POST', body: fd });
+      const data = await res.json() as { query?: string; error?: string };
+      if (data.query) {
+        setImageStatus('idle');
+        setQuery(data.query);
+        // Auto-submit
+        setTimeout(() => onSearch(data.query!), 100);
+      } else {
+        setImageStatus('error');
+        setTimeout(() => setImageStatus('idle'), 3000);
+      }
+    } catch {
+      setImageStatus('error');
+      setTimeout(() => setImageStatus('idle'), 3000);
+    }
+  };
+
+  const displayValue = isListening ? interimText : imageStatus === 'identifying' ? '' : query;
   const placeholderText = isListening
     ? 'Listening… speak your intent'
+    : imageStatus === 'identifying'
+    ? 'Identifying image…'
+    : imageStatus === 'error'
+    ? "Couldn't identify — try typing"
     : displayedPlaceholder || 'Tell me what you want...';
 
   return (
     <div className="w-full max-w-2xl mx-auto">
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
       <form onSubmit={handleSubmit}>
         <div className="relative group">
           {/* Glow border — purple normally, red when listening */}
@@ -159,6 +209,8 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
                       />
                     ))}
                   </span>
+                ) : imageStatus === 'identifying' ? (
+                  <div className="w-4 h-4 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin" />
                 ) : '✦'}
               </div>
             </div>
@@ -166,7 +218,7 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
             <textarea
               ref={inputRef}
               value={displayValue}
-              onChange={(e) => { if (!isListening) setQuery(e.target.value); }}
+              onChange={(e) => { if (!isListening && imageStatus === 'idle') setQuery(e.target.value); }}
               onKeyDown={handleKey}
               onBlur={handleBlur}
               onFocus={() => {
@@ -175,21 +227,39 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
               placeholder={placeholderText}
               rows={1}
               className={`flex-1 bg-transparent text-white placeholder-white/25 text-[17px] leading-relaxed px-4 py-4 resize-none outline-none min-h-[56px] max-h-[160px] overflow-y-auto transition-colors ${
-                isListening ? 'placeholder-red-400/40' : ''
+                isListening ? 'placeholder-red-400/40' : imageStatus === 'error' ? 'placeholder-red-400/60' : ''
               }`}
               style={{ fieldSizing: 'content' } as React.CSSProperties}
-              disabled={isLoading}
+              disabled={isLoading || imageStatus === 'identifying'}
               autoFocus
               readOnly={isListening}
             />
 
             <div className="pr-3 pb-3 flex items-center gap-2 flex-shrink-0">
+              {/* Camera button */}
+              <button
+                type="button"
+                onClick={handleCameraClick}
+                disabled={isLoading || isListening || imageStatus === 'identifying'}
+                title="Search by image"
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 border border-white/10 text-white/30 hover:border-purple-500/40 hover:text-purple-400 hover:bg-purple-500/8 disabled:opacity-30`}
+              >
+                {imageStatus === 'identifying' ? (
+                  <div className="w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin" />
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                    <circle cx="12" cy="13" r="4"/>
+                  </svg>
+                )}
+              </button>
+
               {/* Voice button */}
               {isSupported && (
                 <button
                   type="button"
                   onClick={toggleVoice}
-                  disabled={isLoading}
+                  disabled={isLoading || imageStatus === 'identifying'}
                   title={isListening ? 'Stop listening' : 'Speak your intent'}
                   className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 ${
                     isListening
@@ -210,7 +280,7 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
               {/* Submit button */}
               <button
                 type="submit"
-                disabled={!query.trim() || isLoading || isListening}
+                disabled={!query.trim() || isLoading || isListening || imageStatus === 'identifying'}
                 className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-lg shadow-purple-900/40"
               >
                 {isLoading ? (

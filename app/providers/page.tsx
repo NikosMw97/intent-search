@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import { useFollowedProviders } from '@/hooks/useFollowedProviders';
 import { getPromotedProviders, togglePromoted } from '@/lib/promotedProviders';
+import { getReputation, getReputationColor, getBadgeLabel } from '@/lib/providerReputation';
 
 interface RegisteredProvider {
   id: string;
@@ -143,6 +144,23 @@ export default function ProvidersPage() {
                         <p className="text-xs text-white/60">{p.intentsServed > 0 ? p.intentsServed.toLocaleString() : '—'} intents</p>
                         <p className="text-xs text-green-400">{p.winRate} win rate</p>
                       </div>
+                      {/* Reputation score */}
+                      {(() => {
+                        const rep = getReputation(p.name);
+                        if (!rep) return null;
+                        return (
+                          <div className="flex items-center gap-1.5 hidden sm:flex">
+                            <span className={`text-xs font-mono font-bold ${getReputationColor(rep.overall)}`}>{rep.overall}</span>
+                            {rep.badge && (
+                              <span className={`text-xs px-1.5 py-0.5 rounded-full border ${
+                                rep.badge === 'verified' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+                                rep.badge === 'trusted'  ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' :
+                                'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
+                              }`}>{getBadgeLabel(rep.badge)}</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {/* Follow button */}
                       <button
                         onClick={() => toggleFollow(p.name)}
