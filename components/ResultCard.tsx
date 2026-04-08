@@ -6,6 +6,7 @@ import { predictPrice } from '@/lib/pricePrediction';
 import { getReputation, getReputationColor, getBadgeLabel } from '@/lib/providerReputation';
 import { getProviderDeal } from '@/lib/flashDeals';
 import FlashDealBadge from '@/components/FlashDealBadge';
+import { getVerifiedProvider, formatTransactionCount, getBadgeColor } from '@/lib/verifiedProviders';
 
 interface Props {
   result: RankedResult;
@@ -56,6 +57,9 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
   const [flashDeal] = useState(() =>
     typeof window !== 'undefined' ? getProviderDeal(offer.providerName) : null
   );
+
+  // Verified provider badge
+  const [verified] = useState(() => getVerifiedProvider(offer.providerName));
 
   return (
     <div
@@ -121,6 +125,11 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
                       }`}>{getBadgeLabel(rep.badge)}</span>
                     )}
                   </div>
+                )}
+                {verified && (
+                  <span className={`text-xs px-1.5 py-0.5 rounded-full border ${getBadgeColor(verified.badge)} flex items-center gap-1`}>
+                    ✓ {formatTransactionCount(verified.transactionCount)} sales
+                  </span>
                 )}
                 {offer.rating && <span className="text-xs text-yellow-400/80">★ {offer.rating.toFixed(1)}</span>}
                 {offer.reviewCount && <span className="text-xs text-white/25">({offer.reviewCount.toLocaleString()})</span>}

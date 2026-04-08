@@ -16,6 +16,8 @@ import EscrowModal from '@/components/EscrowModal';
 import BundleResults from '@/components/BundleResults';
 import CounterOfferBar from '@/components/CounterOfferBar';
 import NegotiationPanel from '@/components/NegotiationPanel';
+import SmartSummary from '@/components/SmartSummary';
+import ProactiveSuggestions from '@/components/ProactiveSuggestions';
 import IntentExplainer from '@/components/IntentExplainer';
 import PriceAlertBanner from '@/components/PriceAlertBanner';
 import AutofillModal from '@/components/AutofillModal';
@@ -271,6 +273,9 @@ export default function Home() {
           >
             ✦ Graph
           </Link>
+          <Link href="/api-keys" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 text-xs transition-all">
+            🔑 API
+          </Link>
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/20 bg-yellow-500/8 text-xs text-yellow-400/80">
             <span>🏆</span><span>Colosseum Hackathon</span>
           </div>
@@ -523,6 +528,11 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Smart Summary — shown when done and results exist */}
+              {isDone && filteredResults.length > 0 && intent && (
+                <SmartSummary results={filteredResults} intent={intent} />
+              )}
+
               {/* Filters (only when we have results) */}
               {results.length > 0 && (
                 <FilterBar results={results} filters={filters} onChange={setFilters} />
@@ -581,6 +591,15 @@ export default function Home() {
                   currentBest={bestPrice}
                   onCounterOffer={handleCounterOffer}
                   isLoading={isStreaming}
+                />
+              )}
+
+              {/* Proactive suggestions */}
+              {isDone && intent && (
+                <ProactiveSuggestions
+                  category={intent.category}
+                  query={lastQuery}
+                  onSearch={handleSearch}
                 />
               )}
 
