@@ -240,7 +240,7 @@ export default function Home() {
               </div>
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-purple-500/25 bg-purple-500/10 text-purple-300 text-xs mb-5">
                 <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                Colosseum Hackathon 2025
+                Colosseum Hackathon 2026
               </div>
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-3 leading-tight">
                 <span className="gradient-text">intent</span>
