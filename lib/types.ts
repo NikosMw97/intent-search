@@ -76,6 +76,7 @@ export interface HistoryItem {
   query: string;
   category: ParsedIntent['category'];
   timestamp: number;
+  bestPrice?: number;
 }
 
 /** Client-side filter state */

@@ -17,12 +17,12 @@ export function useIntentHistory() {
     } catch { /* ignore */ }
   }, []);
 
-  const add = useCallback((query: string, category: ParsedIntent['category']) => {
+  const add = useCallback((query: string, category: ParsedIntent['category'], bestPrice?: number) => {
     setHistory((prev) => {
       // Deduplicate by query text
       const filtered = prev.filter((h) => h.query !== query);
       const updated = [
-        { id: crypto.randomUUID(), query, category, timestamp: Date.now() },
+        { id: crypto.randomUUID(), query, category, timestamp: Date.now(), bestPrice },
         ...filtered,
       ].slice(0, MAX_ITEMS);
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }

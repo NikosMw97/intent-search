@@ -13,6 +13,7 @@ interface Props {
   isFollowing?: boolean;
   onToggleFollow?: (providerName: string) => void;
   isSponsored?: boolean;
+  onAutofill?: () => void;
 }
 
 const BADGE_CONFIG = {
@@ -35,7 +36,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function ResultCard({ result, rank, isSelected, onToggleCompare, style, isFollowing, onToggleFollow, isSponsored }: Props) {
+export default function ResultCard({ result, rank, isSelected, onToggleCompare, style, isFollowing, onToggleFollow, isSponsored, onAutofill }: Props) {
   const { offer, score, reasoning, matchFactors, badge } = result;
   const badgeCfg = badge ? BADGE_CONFIG[badge] : null;
   const sym = offer.currency === 'USD' ? '$' : offer.currency === 'GBP' ? '£' : '€';
@@ -198,6 +199,15 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
             >
               <span>◎</span><span>Pay SOL</span>
             </button>
+            {onAutofill && (
+              <button
+                onClick={onAutofill}
+                className="px-3 py-1.5 rounded-lg border border-purple-500/30 text-purple-300 text-xs hover:bg-purple-500/15 transition-colors flex items-center gap-1.5"
+                title="AI autofill checkout"
+              >
+                <span>🤖</span><span>Autofill</span>
+              </button>
+            )}
             <a
               href={offer.link}
               target="_blank"

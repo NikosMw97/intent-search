@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
 import IntentGraph from '@/components/IntentGraph';
-import { buildStats, CATEGORY_CONFIG, Category } from '@/lib/graphSimulator';
+import { buildStats, CATEGORY_CONFIG, Category, FeedEntry } from '@/lib/graphSimulator';
 
 type Stats = ReturnType<typeof buildStats>;
 
@@ -20,10 +20,13 @@ const EMPTY_STATS: Stats = {
 
 export default function GraphPage() {
   const [stats, setStats] = useState<Stats>(EMPTY_STATS);
+  const [feed, setFeed] = useState<FeedEntry[]>([]);
 
   const handleStats = useCallback((s: Stats) => {
     setStats(s);
   }, []);
+
+  const handleFeed = useCallback((entries: FeedEntry[]) => setFeed(entries), []);
 
   const topCategory = (Object.entries(stats.byCategory) as [Category, number][])
     .sort((a, b) => b[1] - a[1])[0];
@@ -50,7 +53,7 @@ export default function GraphPage() {
       <div className="flex flex-1 overflow-hidden">
         {/* Canvas — takes remaining space */}
         <div className="flex-1 relative bg-[#080810]">
-          <IntentGraph onStatsUpdate={handleStats} liveQuery={null} />
+          <IntentGraph onStatsUpdate={handleStats} liveQuery={null} onFeedUpdate={handleFeed} />
 
           {/* Floating total counter */}
           <div className="absolute top-4 left-4 pointer-events-none">
@@ -154,6 +157,34 @@ export default function GraphPage() {
                     <span className="text-xs font-mono text-white/35 tabular-nums">{p.wins} wins</span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            {/* Live feed */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Live Feed</h3>
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+              </div>
+              <div className="space-y-1.5">
+                {feed.length === 0 ? (
+                  <p className="text-xs text-white/20">Waiting for intents…</p>
+                ) : (
+                  feed.map((entry) => (
+                    <div key={entry.id} className="flex items-center gap-2 animate-fade-in">
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: CATEGORY_CONFIG[entry.category].color }}
+                      />
+                      <Link
+                        href={`/?q=${encodeURIComponent(entry.query)}`}
+                        className="text-xs text-white/50 hover:text-white/80 transition-colors flex-1 truncate"
+                      >
+                        {entry.query}
+                      </Link>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 

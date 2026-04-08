@@ -1,5 +1,12 @@
 export type Category = 'electronics' | 'flights' | 'hotels' | 'cars' | 'restaurants' | 'freelance' | 'software' | 'general';
 
+export interface FeedEntry {
+  id: number;
+  query: string;
+  category: Category;
+  timestamp: number;  // Date.now()
+}
+
 export interface GraphParticle {
   id: number;
   x: number;
@@ -117,6 +124,19 @@ export function tickParticles(
       return { ...p, x: p.x + vx, y: p.y + vy, vx, vy, age: newAge, opacity };
     })
     .filter((p) => p.age < p.maxAge);
+}
+
+export function extractFeedEntries(particles: GraphParticle[], limit = 10): FeedEntry[] {
+  // Sort by descending id (most recently spawned first)
+  return [...particles]
+    .sort((a, b) => b.id - a.id)
+    .slice(0, limit)
+    .map((p) => ({
+      id: p.id,
+      query: p.query,
+      category: p.category,
+      timestamp: Date.now(),
+    }));
 }
 
 export function buildStats(particles: GraphParticle[], allTimeTotal: number): GraphStats {

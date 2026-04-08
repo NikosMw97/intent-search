@@ -17,6 +17,8 @@ import BundleResults from '@/components/BundleResults';
 import CounterOfferBar from '@/components/CounterOfferBar';
 import NegotiationPanel from '@/components/NegotiationPanel';
 import IntentExplainer from '@/components/IntentExplainer';
+import PriceAlertBanner from '@/components/PriceAlertBanner';
+import AutofillModal from '@/components/AutofillModal';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
@@ -24,6 +26,7 @@ import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { useBundleSearch } from '@/hooks/useBundleSearch';
 import { useFollowedProviders } from '@/hooks/useFollowedProviders';
 import { useNegotiation } from '@/hooks/useNegotiation';
+import { usePriceAlerts } from '@/hooks/usePriceAlerts';
 import { looksLikeBundle } from '@/lib/bundleHeuristic';
 import { getPromotedProviders } from '@/lib/promotedProviders';
 import { MOODS, applyMood } from '@/lib/moodMapper';
@@ -107,8 +110,12 @@ export default function Home() {
   } | null>(null);
   const [activeMood, setActiveMood] = useState<string | null>(null);
   const [usedMoodId, setUsedMoodId] = useState<string | null>(null);
+  const [autofillOffer, setAutofillOffer] = useState<{
+    name: string; price: number; currency: string; providerName: string; providerLogo: string;
+  } | null>(null);
 
   const auction = useAuction(intent);
+  const { alerts, dismiss: dismissAlert } = usePriceAlerts(history);
   const { triggeredCount } = useSubscriptions();
   const bundle = useBundleSearch();
   const [showBundle, setShowBundle] = useState(false);
@@ -129,7 +136,7 @@ export default function Home() {
       const url = new URL(window.location.href);
       url.searchParams.set('q', lastQuery);
       window.history.replaceState({}, '', url.toString());
-      addToHistory(lastQuery, intent?.category ?? 'general');
+      addToHistory(lastQuery, intent?.category ?? 'general', results.length > 0 ? Math.min(...results.map(r => r.offer.price)) : undefined);
     }
   }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -331,6 +338,9 @@ export default function Home() {
                 </span>
               ))}
             </div>
+
+            {/* Price alerts */}
+            <PriceAlertBanner alerts={alerts} onSearch={handleSearch} onDismiss={dismissAlert} />
 
             {/* Search history */}
             {history.length > 0 && (
@@ -534,6 +544,13 @@ export default function Home() {
                     onToggleFollow={toggleFollow}
                     isSponsored={result.isSponsored}
                     style={{ animationDelay: `${i * 80}ms` }}
+                    onAutofill={() => setAutofillOffer({
+                      name: result.offer.name,
+                      price: result.offer.price,
+                      currency: '€',
+                      providerName: result.offer.providerName,
+                      providerLogo: result.offer.providerLogo ?? '',
+                    })}
                   />
                 ))}
 
@@ -575,6 +592,11 @@ export default function Home() {
       {/* ── Escrow modal ───────────────────────────────────────────────────── */}
       {escrowOffer && (
         <EscrowModal offer={escrowOffer} onClose={() => setEscrowOffer(null)} />
+      )}
+
+      {/* ── Autofill modal ─────────────────────────────────────────────────── */}
+      {autofillOffer && (
+        <AutofillModal offer={autofillOffer} onClose={() => setAutofillOffer(null)} />
       )}
 
       {/* ── Floating compare bar ───────────────────────────────────────────── */}

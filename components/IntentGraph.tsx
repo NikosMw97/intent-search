@@ -7,19 +7,22 @@ import {
   createParticle,
   tickParticles,
   buildStats,
+  extractFeedEntries,
   Category,
+  FeedEntry,
 } from '@/lib/graphSimulator';
 
 interface Props {
   onStatsUpdate: (stats: ReturnType<typeof buildStats>) => void;
   liveQuery?: { query: string; category: Category } | null;
+  onFeedUpdate?: (entries: FeedEntry[]) => void;
 }
 
 const SPAWN_INTERVAL_MS = 1400;
 const MAX_PARTICLES = 80;
 const CONNECTION_DISTANCE = 70;
 
-export default function IntentGraph({ onStatsUpdate, liveQuery }: Props) {
+export default function IntentGraph({ onStatsUpdate, liveQuery, onFeedUpdate }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<GraphParticle[]>([]);
   const lastSpawnRef = useRef(0);
@@ -141,6 +144,7 @@ export default function IntentGraph({ onStatsUpdate, liveQuery }: Props) {
       particlesRef.current = tickParticles(particlesRef.current, dt, w, h);
       draw(ctx, w, h, particlesRef.current);
       onStatsUpdate(buildStats(particlesRef.current, allTimeTotalRef.current));
+      if (onFeedUpdate) onFeedUpdate(extractFeedEntries(particlesRef.current, 12));
 
       rafRef.current = requestAnimationFrame(loop);
     };
@@ -151,7 +155,7 @@ export default function IntentGraph({ onStatsUpdate, liveQuery }: Props) {
       cancelAnimationFrame(rafRef.current);
       window.removeEventListener('resize', resize);
     };
-  }, [draw, onStatsUpdate]);
+  }, [draw, onStatsUpdate, onFeedUpdate]);
 
   return (
     <canvas
