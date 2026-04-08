@@ -13,10 +13,13 @@ import CompareModal from '@/components/CompareModal';
 import RefinementBar from '@/components/RefinementBar';
 import AuctionRoom from '@/components/AuctionRoom';
 import EscrowModal from '@/components/EscrowModal';
+import BundleResults from '@/components/BundleResults';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
+import { useBundleSearch } from '@/hooks/useBundleSearch';
+import { looksLikeBundle } from '@/lib/bundleParser';
 import type { FilterState, RankedResult } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
@@ -78,6 +81,8 @@ export default function Home() {
 
   const auction = useAuction(intent);
   const { triggeredCount } = useSubscriptions();
+  const bundle = useBundleSearch();
+  const [showBundle, setShowBundle] = useState(false);
 
   // ── URL sharing: read ?q= on load ────────────────────────────────────────
   useEffect(() => {
@@ -109,9 +114,17 @@ export default function Home() {
 
   const handleSearch = useCallback((query: string) => {
     setLastQuery(query);
+    window.history.replaceState({}, '', '/');
+    // If the query looks like a bundle, run bundle search alongside normal search
+    if (looksLikeBundle(query)) {
+      setShowBundle(true);
+      bundle.search(query);
+    } else {
+      setShowBundle(false);
+      bundle.reset();
+    }
     search(query);
-    window.history.replaceState({}, '', '/'); // clear stale ?q= while loading
-  }, [search]);
+  }, [search, bundle]);
 
   const handleRefine = useCallback((refinement: string) => {
     search(lastQuery, refinement);
@@ -119,10 +132,12 @@ export default function Home() {
 
   const handleReset = useCallback(() => {
     reset();
+    bundle.reset();
     setLastQuery('');
     setCompareIds(new Set());
+    setShowBundle(false);
     window.history.replaceState({}, '', '/');
-  }, [reset]);
+  }, [reset, bundle]);
 
   const toggleCompare = useCallback((id: string) => {
     setCompareIds((prev) => {
@@ -168,6 +183,12 @@ export default function Home() {
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 text-xs transition-all"
           >
             🏢 Providers
+          </Link>
+          <Link
+            href="/graph"
+            className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 text-xs transition-all"
+          >
+            ✦ Graph
           </Link>
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/20 bg-yellow-500/8 text-xs text-yellow-400/80">
             <span>🏆</span><span>Colosseum Hackathon</span>
@@ -371,6 +392,19 @@ export default function Home() {
               {/* Filters (only when we have results) */}
               {results.length > 0 && (
                 <FilterBar results={results} filters={filters} onChange={setFilters} />
+              )}
+
+              {/* Bundle results */}
+              {showBundle && bundle.state !== 'not_bundle' && bundle.state !== 'idle' && (
+                <div className="mb-5 animate-fade-in">
+                  <BundleResults
+                    plan={bundle.plan}
+                    subResults={bundle.subResults}
+                    summary={bundle.summary}
+                    isStreaming={bundle.state === 'loading' || bundle.state === 'streaming'}
+                    onClose={() => setShowBundle(false)}
+                  />
+                </div>
               )}
 
               {/* Cards */}
