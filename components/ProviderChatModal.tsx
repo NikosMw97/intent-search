@@ -61,16 +61,8 @@ export default function ProviderChatModal({ provider, offer, onClose }: Props) {
         }),
       });
 
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let fullText = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        fullText += decoder.decode(value, { stream: true });
-        setMessages([...newMessages, { role: 'assistant', content: fullText }]);
-      }
+      const { text } = await res.json() as { text: string };
+      setMessages([...newMessages, { role: 'assistant', content: text }]);
     } finally {
       setIsTyping(false);
     }
