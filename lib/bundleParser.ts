@@ -15,15 +15,7 @@ export interface BundlePlan {
   subIntents: SubIntent[];
 }
 
-const BUNDLE_HEURISTICS = [
-  /\btrip\b/i, /\bweekend\b/i, /\bvacation\b/i, /\bholiday\b/i,
-  /\btravel\b/i, /\bgetaway\b/i, /\bvisit\b/i,
-];
-
-/** Quick check before calling Claude */
-export function looksLikeBundle(query: string): boolean {
-  return BUNDLE_HEURISTICS.some((r) => r.test(query));
-}
+export { looksLikeBundle } from './bundleHeuristic';
 
 export async function parseBundleIntent(query: string): Promise<BundlePlan> {
   const systemPrompt = `You are an intent decomposition engine. Given a compound user query,

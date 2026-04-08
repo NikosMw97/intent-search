@@ -19,7 +19,7 @@ import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { useBundleSearch } from '@/hooks/useBundleSearch';
-import { looksLikeBundle } from '@/lib/bundleParser';
+import { looksLikeBundle } from '@/lib/bundleHeuristic';
 import type { FilterState, RankedResult } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
