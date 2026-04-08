@@ -23,7 +23,7 @@ export default function IntentGraph({ onStatsUpdate, liveQuery }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const particlesRef = useRef<GraphParticle[]>([]);
   const lastSpawnRef = useRef(0);
-  const lastTickRef = useRef(performance.now());
+  const lastTickRef = useRef(0);
   const allTimeTotalRef = useRef(0);
   const rafRef = useRef<number>(0);
   const pendingQueryRef = useRef<{ query: string; category: Category } | null>(null);
@@ -119,7 +119,7 @@ export default function IntentGraph({ onStatsUpdate, liveQuery }: Props) {
 
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
-      const dt = now - lastTickRef.current;
+      const dt = lastTickRef.current === 0 ? 16 : Math.min(now - lastTickRef.current, 100);
       lastTickRef.current = now;
 
       // Spawn auto particles
