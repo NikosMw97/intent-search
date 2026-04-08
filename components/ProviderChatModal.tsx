@@ -45,6 +45,10 @@ export default function ProviderChatModal({ provider, offer, onClose }: Props) {
     setMessages([...newMessages, { role: 'assistant', content: '' }]);
 
     try {
+      // Anthropic requires conversations to start with a user message.
+      // Skip the synthetic greeting (first assistant message) before sending.
+      const apiMessages = newMessages.filter((_, i) => !(i === 0 && newMessages[0].role === 'assistant'));
+
       const res = await fetch('/api/provider-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -53,7 +57,7 @@ export default function ProviderChatModal({ provider, offer, onClose }: Props) {
           providerLogo: provider.logo,
           offerName: offer.name,
           offerPrice: offer.price,
-          messages: newMessages,
+          messages: apiMessages,
         }),
       });
 
