@@ -14,12 +14,15 @@ import RefinementBar from '@/components/RefinementBar';
 import AuctionRoom from '@/components/AuctionRoom';
 import EscrowModal from '@/components/EscrowModal';
 import BundleResults from '@/components/BundleResults';
+import CounterOfferBar from '@/components/CounterOfferBar';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
 import { useSubscriptions } from '@/hooks/useSubscriptions';
 import { useBundleSearch } from '@/hooks/useBundleSearch';
+import { useFollowedProviders } from '@/hooks/useFollowedProviders';
 import { looksLikeBundle } from '@/lib/bundleHeuristic';
+import { getPromotedProviders } from '@/lib/promotedProviders';
 import type { FilterState, RankedResult } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
@@ -37,6 +40,24 @@ function applyFilters(results: RankedResult[], filters: FilterState): RankedResu
     if (filters.providers.length > 0 && !filters.providers.includes(r.offer.providerName)) return false;
     return true;
   });
+}
+
+function applyPromotion(results: RankedResult[]): Array<RankedResult & { isSponsored?: boolean }> {
+  const promoted = getPromotedProviders();
+  if (promoted.size === 0) return results;
+
+  const sponsored: Array<RankedResult & { isSponsored?: boolean }> = [];
+  const regular: Array<RankedResult & { isSponsored?: boolean }> = [];
+
+  for (const r of results) {
+    if (promoted.has(r.offer.providerName)) {
+      sponsored.push({ ...r, isSponsored: true });
+    } else {
+      regular.push(r);
+    }
+  }
+
+  return [...sponsored, ...regular];
 }
 
 // Skeleton card shown while streaming
@@ -69,6 +90,7 @@ function SkeletonCard() {
 export default function Home() {
   const { intent, results, stats, status, error, searchTimeMs, search, reset } = useIntentStream();
   const { history, add: addToHistory, clear: clearHistory } = useIntentHistory();
+  const { isFollowing, toggle: toggleFollow } = useFollowedProviders();
 
   const [lastQuery, setLastQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -155,13 +177,22 @@ export default function Home() {
     });
   }, []);
 
+  const handleCounterOffer = useCallback((maxPrice: number) => {
+    const newQuery = `${lastQuery} under €${maxPrice}`;
+    handleSearch(newQuery);
+  }, [lastQuery, handleSearch]);
+
   const filteredResults = applyFilters(results, filters);
+  const promotedResults = applyPromotion(filteredResults);
   const compareItems = results.filter((r) => compareIds.has(r.offer.id));
 
   const isStreaming = status === 'streaming';
   const isDone = status === 'done';
   const hasResults = results.length > 0;
   const showResults = hasResults || isStreaming;
+
+  // Best price among current results for counter-offer
+  const bestPrice = results.length > 0 ? Math.min(...results.map((r) => r.offer.price)) : null;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -339,7 +370,7 @@ export default function Home() {
                   <h2 className="text-base font-semibold text-white flex items-center gap-2">
                     {isStreaming && !isDone
                       ? <><span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse" /> Finding results…</>
-                      : `Top ${filteredResults.length} results`
+                      : `Top ${promotedResults.length} results`
                     }
                   </h2>
                   {stats && (
@@ -409,13 +440,16 @@ export default function Home() {
 
               {/* Cards */}
               <div className="space-y-3">
-                {filteredResults.map((result, i) => (
+                {promotedResults.map((result, i) => (
                   <ResultCard
                     key={result.offer.id}
                     result={result}
                     rank={result.rank}
                     isSelected={compareIds.has(result.offer.id)}
                     onToggleCompare={toggleCompare}
+                    isFollowing={isFollowing(result.offer.providerName)}
+                    onToggleFollow={toggleFollow}
+                    isSponsored={result.isSponsored}
                     style={{ animationDelay: `${i * 80}ms` }}
                   />
                 ))}
@@ -425,6 +459,15 @@ export default function Home() {
                   <SkeletonCard key={`sk-${i}`} />
                 ))}
               </div>
+
+              {/* Counter-offer bar — shown when done */}
+              {isDone && (
+                <CounterOfferBar
+                  currentBest={bestPrice}
+                  onCounterOffer={handleCounterOffer}
+                  isLoading={isStreaming}
+                />
+              )}
 
               {/* Compare hint */}
               {isDone && results.length > 0 && compareIds.size === 0 && (

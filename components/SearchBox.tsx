@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useVoiceInput } from '@/hooks/useVoiceInput';
+import { getAutocompleteSuggestions } from '@/lib/autocomplete';
 
 const EXAMPLE_QUERIES = [
   'Best laptop under €1200 for programming',
@@ -22,8 +23,11 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayedPlaceholder, setDisplayedPlaceholder] = useState('');
   const [interimText, setInterimText] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Voice input ──────────────────────────────────────────────────────────
   const { isListening, isSupported, start: startVoice, stop: stopVoice, status: voiceStatus } = useVoiceInput({
@@ -37,6 +41,17 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
       setInterimText(text);
     }, []),
   });
+
+  // ── Autocomplete debounce ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      const results = getAutocompleteSuggestions(query);
+      setSuggestions(results);
+      setShowSuggestions(results.length > 0 && query.trim().length >= 2);
+    }, 250);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
 
   // ── Typewriter placeholder ───────────────────────────────────────────────
   useEffect(() => {
@@ -73,15 +88,35 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const q = query.trim();
-    if (q && !isLoading) onSearch(q);
+    if (q && !isLoading) {
+      setShowSuggestions(false);
+      onSearch(q);
+    }
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       const q = query.trim();
-      if (q && !isLoading) onSearch(q);
+      if (q && !isLoading) {
+        setShowSuggestions(false);
+        onSearch(q);
+      }
     }
+    if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
+
+  const handleBlur = () => {
+    // Delay so click on suggestion registers first
+    setTimeout(() => setShowSuggestions(false), 150);
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setQuery(suggestion);
+    setShowSuggestions(false);
+    onSearch(suggestion);
   };
 
   const toggleVoice = () => {
@@ -133,6 +168,10 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
               value={displayValue}
               onChange={(e) => { if (!isListening) setQuery(e.target.value); }}
               onKeyDown={handleKey}
+              onBlur={handleBlur}
+              onFocus={() => {
+                if (suggestions.length > 0 && query.trim().length >= 2) setShowSuggestions(true);
+              }}
               placeholder={placeholderText}
               rows={1}
               className={`flex-1 bg-transparent text-white placeholder-white/25 text-[17px] leading-relaxed px-4 py-4 resize-none outline-none min-h-[56px] max-h-[160px] overflow-y-auto transition-colors ${
@@ -184,6 +223,24 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
               </button>
             </div>
           </div>
+
+          {/* Autocomplete dropdown */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute z-50 w-full mt-1 rounded-xl border border-white/10 bg-[#0f0f1a] shadow-xl overflow-hidden">
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()} // prevent blur before click
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className="w-full px-4 py-2.5 text-sm text-white/60 hover:bg-purple-500/10 hover:text-white/90 cursor-pointer transition-colors flex items-center gap-2 text-left"
+                >
+                  <span className="text-purple-400/60 flex-shrink-0">✦</span>
+                  <span>{suggestion}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </form>
 

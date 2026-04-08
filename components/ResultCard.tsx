@@ -1,6 +1,7 @@
 'use client';
 
 import type { RankedResult } from '@/lib/types';
+import { predictPrice } from '@/lib/pricePrediction';
 
 interface Props {
   result: RankedResult;
@@ -8,6 +9,9 @@ interface Props {
   isSelected?: boolean;
   onToggleCompare?: (id: string) => void;
   style?: React.CSSProperties;
+  isFollowing?: boolean;
+  onToggleFollow?: (providerName: string) => void;
+  isSponsored?: boolean;
 }
 
 const BADGE_CONFIG = {
@@ -30,10 +34,13 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function ResultCard({ result, rank, isSelected, onToggleCompare, style }: Props) {
+export default function ResultCard({ result, rank, isSelected, onToggleCompare, style, isFollowing, onToggleFollow, isSponsored }: Props) {
   const { offer, score, reasoning, matchFactors, badge } = result;
   const badgeCfg = badge ? BADGE_CONFIG[badge] : null;
   const sym = offer.currency === 'USD' ? '$' : offer.currency === 'GBP' ? '£' : '€';
+
+  // Price prediction — use category from offer if available, fallback to providerName
+  const prediction = predictPrice(offer.providerName, offer.price);
 
   return (
     <div
@@ -76,10 +83,29 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
 
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">{offer.name}</h3>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
                 <span className="text-xs text-white/40">{offer.providerLogo} {offer.providerName}</span>
                 {offer.rating && <span className="text-xs text-yellow-400/80">★ {offer.rating.toFixed(1)}</span>}
                 {offer.reviewCount && <span className="text-xs text-white/25">({offer.reviewCount.toLocaleString()})</span>}
+                {/* Follow button */}
+                {onToggleFollow && (
+                  <button
+                    onClick={(e) => { e.preventDefault(); onToggleFollow(offer.providerName); }}
+                    title={isFollowing ? `Unfollow ${offer.providerName}` : `Follow ${offer.providerName}`}
+                    className="transition-colors text-sm leading-none"
+                  >
+                    {isFollowing
+                      ? <span className="text-pink-400">♥</span>
+                      : <span className="text-white/20 hover:text-pink-400/60">♡</span>
+                    }
+                  </button>
+                )}
+                {/* Sponsored badge */}
+                {isSponsored && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/15 border border-yellow-500/25 text-yellow-400/80 text-xs">
+                    Sponsored
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -90,6 +116,17 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
               <div className="w-2 h-2 rounded-full bg-green-400" />
               <span className="text-xs text-white/40">{score}/100</span>
             </div>
+          </div>
+        </div>
+
+        {/* Price prediction badge */}
+        <div className="mb-3">
+          <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${
+            prediction.trend === 'falling' ? 'bg-green-500/10 border-green-500/20 text-green-400' :
+            prediction.trend === 'rising'  ? 'bg-red-500/10 border-red-500/20 text-red-400' :
+            'bg-white/5 border-white/10 text-white/35'
+          }`}>
+            {prediction.label}
           </div>
         </div>
 

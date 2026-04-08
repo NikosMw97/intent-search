@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
+import { useFollowedProviders } from '@/hooks/useFollowedProviders';
+import { getPromotedProviders, togglePromoted } from '@/lib/promotedProviders';
 
 interface RegisteredProvider {
   id: string;
@@ -29,12 +31,17 @@ export default function ProvidersPage() {
   const [registered, setRegistered] = useState<RegisteredProvider[]>([]);
   const [form, setForm] = useState({ name: '', category: '', website: '' });
   const [submitted, setSubmitted] = useState(false);
+  const [promotedSet, setPromotedSet] = useState<Set<string>>(new Set());
+
+  const { isFollowing, toggle: toggleFollow } = useFollowedProviders();
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem('intent_providers');
       if (stored) setRegistered(JSON.parse(stored));
     } catch { /* ignore */ }
+    // Load promoted providers
+    setPromotedSet(getPromotedProviders());
   }, []);
 
   const handleRegister = (e: React.FormEvent) => {
@@ -52,6 +59,19 @@ export default function ProvidersPage() {
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
   };
+
+  const handleTogglePromote = (providerName: string) => {
+    togglePromoted(providerName);
+    setPromotedSet(getPromotedProviders());
+  };
+
+  const allProviders = [
+    ...MOCK_PROVIDERS,
+    ...registered.map((r) => ({
+      id: r.id, name: r.name, category: r.category, offers: 0,
+      intentsServed: 0, winRate: '—', logo: '🆕',
+    })),
+  ];
 
   return (
     <div className="min-h-screen">
@@ -96,27 +116,60 @@ export default function ProvidersPage() {
           <div>
             <h2 className="text-sm font-semibold text-white mb-3">Active Providers</h2>
             <div className="rounded-2xl border border-white/8 bg-surface overflow-hidden">
-              {[...MOCK_PROVIDERS, ...registered.map((r) => ({
-                id: r.id, name: r.name, category: r.category, offers: 0,
-                intentsServed: 0, winRate: '—', logo: '🆕',
-              }))].map((p, i) => (
-                <div
-                  key={p.id}
-                  className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-white/6' : ''}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{p.logo}</span>
-                    <div>
-                      <p className="text-sm font-medium text-white">{p.name}</p>
-                      <p className="text-xs text-white/35">{p.category}</p>
+              {allProviders.map((p, i) => {
+                const isPromoted = promotedSet.has(p.name);
+                const following = isFollowing(p.name);
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center justify-between px-4 py-3 ${i > 0 ? 'border-t border-white/6' : ''}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-lg flex-shrink-0">{p.logo}</span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-white">{p.name}</p>
+                          {isPromoted && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-yellow-500/15 border border-yellow-500/25 text-yellow-400/80 text-xs">
+                              ⚡ Promoted
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-white/35">{p.category}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                      <div className="text-right hidden sm:block">
+                        <p className="text-xs text-white/60">{p.intentsServed > 0 ? p.intentsServed.toLocaleString() : '—'} intents</p>
+                        <p className="text-xs text-green-400">{p.winRate} win rate</p>
+                      </div>
+                      {/* Follow button */}
+                      <button
+                        onClick={() => toggleFollow(p.name)}
+                        title={following ? `Unfollow ${p.name}` : `Follow ${p.name}`}
+                        className="text-lg leading-none transition-colors"
+                      >
+                        {following
+                          ? <span className="text-pink-400">♥</span>
+                          : <span className="text-white/20 hover:text-pink-400/60">♡</span>
+                        }
+                      </button>
+                      {/* Promote toggle */}
+                      <button
+                        onClick={() => handleTogglePromote(p.name)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                          isPromoted
+                            ? 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/25'
+                            : 'border-white/10 text-white/30 hover:border-yellow-500/30 hover:text-yellow-400/60'
+                        }`}
+                        title={isPromoted ? 'Remove promotion' : 'Promote this provider'}
+                      >
+                        {isPromoted ? '⚡ On' : '⚡'}
+                      </button>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-white/60">{p.intentsServed > 0 ? p.intentsServed.toLocaleString() : '—'} intents</p>
-                    <p className="text-xs text-green-400">{p.winRate} win rate</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
