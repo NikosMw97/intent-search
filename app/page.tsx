@@ -12,9 +12,11 @@ import FilterBar from '@/components/FilterBar';
 import CompareModal from '@/components/CompareModal';
 import RefinementBar from '@/components/RefinementBar';
 import AuctionRoom from '@/components/AuctionRoom';
+import EscrowModal from '@/components/EscrowModal';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
+import { useSubscriptions } from '@/hooks/useSubscriptions';
 import type { FilterState, RankedResult } from '@/lib/types';
 
 const DEFAULT_FILTERS: FilterState = { minPrice: 0, maxPrice: Infinity, minRating: 0, providers: [] };
@@ -70,8 +72,12 @@ export default function Home() {
   const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
   const [showCompare, setShowCompare] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [escrowOffer, setEscrowOffer] = useState<{
+    name: string; price: number; currency: string; providerName: string; providerLogo: string;
+  } | null>(null);
 
   const auction = useAuction(intent);
+  const { triggeredCount } = useSubscriptions();
 
   // ── URL sharing: read ?q= on load ────────────────────────────────────────
   useEffect(() => {
@@ -151,11 +157,17 @@ export default function Home() {
           <Logo size={34} showName showTagline={false} />
         </button>
         <div className="flex items-center gap-3">
+          <Link href="/subscriptions" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 text-xs transition-all">
+            🔔 Alerts
+            {triggeredCount > 0 && (
+              <span className="w-4 h-4 rounded-full bg-green-500 text-white text-xs flex items-center justify-center">{triggeredCount}</span>
+            )}
+          </Link>
           <Link
             href="/providers"
             className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 text-xs transition-all"
           >
-            🏢 For Providers
+            🏢 Providers
           </Link>
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-yellow-500/20 bg-yellow-500/8 text-xs text-yellow-400/80">
             <span>🏆</span><span>Colosseum Hackathon</span>
@@ -292,6 +304,7 @@ export default function Home() {
                     winnerLogo={auction.winnerLogo}
                     onStart={auction.start}
                     onReset={auction.reset}
+                    onAcceptBid={setEscrowOffer}
                   />
                 )}
               </div>
@@ -397,6 +410,11 @@ export default function Home() {
       {/* ── Compare modal ──────────────────────────────────────────────────── */}
       {showCompare && compareItems.length >= 2 && (
         <CompareModal items={compareItems} onClose={() => setShowCompare(false)} />
+      )}
+
+      {/* ── Escrow modal ───────────────────────────────────────────────────── */}
+      {escrowOffer && (
+        <EscrowModal offer={escrowOffer} onClose={() => setEscrowOffer(null)} />
       )}
 
       {/* ── Floating compare bar ───────────────────────────────────────────── */}

@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { useVoiceInput } from '@/hooks/useVoiceInput';
 
 const EXAMPLE_QUERIES = [
   'Best laptop under €1200 for programming',
   'Cheap flight from Athens to Paris',
   'Hire a logo designer under €100',
   'Best phone under €800 with great camera',
+  'Hotel in Santorini under €200 per night',
   'Find a React developer for a landing page',
 ];
 
@@ -19,11 +21,26 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
   const [query, setQuery] = useState('');
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
   const [displayedPlaceholder, setDisplayedPlaceholder] = useState('');
+  const [interimText, setInterimText] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Typewriter effect for placeholder cycling
+  // ── Voice input ──────────────────────────────────────────────────────────
+  const { isListening, isSupported, start: startVoice, stop: stopVoice, status: voiceStatus } = useVoiceInput({
+    onFinalTranscript: useCallback((text: string) => {
+      setInterimText('');
+      setQuery(text);
+      // Auto-submit after a brief pause so user can see the transcript
+      setTimeout(() => onSearch(text), 350);
+    }, [onSearch]),
+    onInterimTranscript: useCallback((text: string) => {
+      setInterimText(text);
+    }, []),
+  });
+
+  // ── Typewriter placeholder ───────────────────────────────────────────────
   useEffect(() => {
+    if (isListening) return; // pause animation while listening
     const target = EXAMPLE_QUERIES[placeholderIndex];
     let i = 0;
     setDisplayedPlaceholder('');
@@ -34,7 +51,6 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
         i++;
         animRef.current = setTimeout(type, 45);
       } else {
-        // Pause, then erase, then next
         animRef.current = setTimeout(() => {
           function erase() {
             if (i > 0) {
@@ -52,58 +68,111 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
 
     type();
     return () => { if (animRef.current) clearTimeout(animRef.current); };
-  }, [placeholderIndex]);
+  }, [placeholderIndex, isListening]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query.trim() && !isLoading) onSearch(query.trim());
+    const q = query.trim();
+    if (q && !isLoading) onSearch(q);
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (query.trim() && !isLoading) onSearch(query.trim());
+      const q = query.trim();
+      if (q && !isLoading) onSearch(q);
     }
   };
 
-  const handleExample = (example: string) => {
-    setQuery(example);
-    inputRef.current?.focus();
+  const toggleVoice = () => {
+    if (isListening) stopVoice();
+    else startVoice();
   };
+
+  const displayValue = isListening ? interimText : query;
+  const placeholderText = isListening
+    ? 'Listening… speak your intent'
+    : displayedPlaceholder || 'Tell me what you want...';
 
   return (
     <div className="w-full max-w-2xl mx-auto">
       <form onSubmit={handleSubmit}>
         <div className="relative group">
-          {/* Glow border */}
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-600 to-cyan-500 rounded-2xl opacity-30 group-focus-within:opacity-70 blur transition-opacity duration-300" />
+          {/* Glow border — purple normally, red when listening */}
+          <div className={`absolute -inset-0.5 rounded-2xl blur transition-all duration-300 ${
+            isListening
+              ? 'bg-gradient-to-r from-red-500 to-pink-500 opacity-50'
+              : 'bg-gradient-to-r from-purple-600 to-cyan-500 opacity-30 group-focus-within:opacity-70'
+          }`} />
 
-          <div className="relative flex items-end bg-surface rounded-2xl border border-white/10 overflow-hidden">
+          <div className={`relative flex items-end rounded-2xl border overflow-hidden transition-colors duration-300 ${
+            isListening ? 'bg-surface border-red-500/20' : 'bg-surface border-white/10'
+          }`}>
             {/* Intent icon */}
             <div className="pl-5 pb-4 pt-4 flex-shrink-0 self-start mt-0.5">
-              <div className="w-6 h-6 text-purple-400 flex items-center justify-center text-lg">
-                ✦
+              <div className={`w-6 h-6 flex items-center justify-center text-lg transition-colors ${
+                isListening ? 'text-red-400' : 'text-purple-400'
+              }`}>
+                {isListening ? (
+                  // Animated soundwave
+                  <span className="flex items-center gap-0.5">
+                    {[1, 1.5, 1, 0.75, 1.25].map((h, i) => (
+                      <span
+                        key={i}
+                        className="w-0.5 rounded-full bg-red-400 animate-bounce"
+                        style={{ height: `${h * 8}px`, animationDelay: `${i * 100}ms` }}
+                      />
+                    ))}
+                  </span>
+                ) : '✦'}
               </div>
             </div>
 
             <textarea
               ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              value={displayValue}
+              onChange={(e) => { if (!isListening) setQuery(e.target.value); }}
               onKeyDown={handleKey}
-              placeholder={displayedPlaceholder || 'Tell me what you want...'}
+              placeholder={placeholderText}
               rows={1}
-              className="flex-1 bg-transparent text-white placeholder-white/25 text-[17px] leading-relaxed px-4 py-4 resize-none outline-none min-h-[56px] max-h-[160px] overflow-y-auto"
+              className={`flex-1 bg-transparent text-white placeholder-white/25 text-[17px] leading-relaxed px-4 py-4 resize-none outline-none min-h-[56px] max-h-[160px] overflow-y-auto transition-colors ${
+                isListening ? 'placeholder-red-400/40' : ''
+              }`}
               style={{ fieldSizing: 'content' } as React.CSSProperties}
               disabled={isLoading}
               autoFocus
+              readOnly={isListening}
             />
 
-            <div className="pr-3 pb-3 flex-shrink-0">
+            <div className="pr-3 pb-3 flex items-center gap-2 flex-shrink-0">
+              {/* Voice button */}
+              {isSupported && (
+                <button
+                  type="button"
+                  onClick={toggleVoice}
+                  disabled={isLoading}
+                  title={isListening ? 'Stop listening' : 'Speak your intent'}
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-200 ${
+                    isListening
+                      ? 'bg-red-500/20 border border-red-500/40 text-red-400 animate-pulse-slow'
+                      : 'border border-white/10 text-white/30 hover:border-purple-500/40 hover:text-purple-400 hover:bg-purple-500/8'
+                  } disabled:opacity-30`}
+                >
+                  {voiceStatus === 'processing' ? (
+                    <div className="w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                    </svg>
+                  )}
+                </button>
+              )}
+
+              {/* Submit button */}
               <button
                 type="submit"
-                disabled={!query.trim() || isLoading}
-                className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center group/btn shadow-lg shadow-purple-900/40"
+                disabled={!query.trim() || isLoading || isListening}
+                className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center shadow-lg shadow-purple-900/40"
               >
                 {isLoading ? (
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -118,18 +187,24 @@ export default function SearchBox({ onSearch, isLoading }: Props) {
         </div>
       </form>
 
-      {/* Example chips */}
-      <div className="mt-4 flex flex-wrap gap-2 justify-center">
-        {EXAMPLE_QUERIES.slice(0, 3).map((ex) => (
-          <button
-            key={ex}
-            onClick={() => handleExample(ex)}
-            className="px-3 py-1.5 rounded-full text-xs text-white/40 border border-white/10 hover:border-purple-500/40 hover:text-white/70 hover:bg-white/5 transition-all duration-200"
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
+      {/* Voice hint / example chips */}
+      {isListening ? (
+        <p className="mt-3 text-center text-xs text-red-400/60 animate-pulse">
+          🎙 Speak now — say your intent clearly
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-wrap gap-2 justify-center">
+          {EXAMPLE_QUERIES.slice(0, 3).map((ex) => (
+            <button
+              key={ex}
+              onClick={() => { setQuery(ex); inputRef.current?.focus(); }}
+              className="px-3 py-1.5 rounded-full text-xs text-white/40 border border-white/10 hover:border-purple-500/40 hover:text-white/70 hover:bg-white/5 transition-all duration-200"
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

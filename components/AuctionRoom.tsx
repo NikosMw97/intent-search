@@ -11,6 +11,7 @@ interface Props {
   winnerLogo: string | null;
   onStart: () => void;
   onReset: () => void;
+  onAcceptBid?: (bid: { name: string; price: number; currency: string; providerName: string; providerLogo: string }) => void;
 }
 
 const AUCTION_DURATION_MS = 18000;
@@ -101,7 +102,7 @@ function EventBubble({ event, isNew }: { event: AuctionEvent; isNew: boolean }) 
   );
 }
 
-export default function AuctionRoom({ status, events, bestPrice, bestProvider, winnerLogo, onStart, onReset }: Props) {
+export default function AuctionRoom({ status, events, bestPrice, bestProvider, winnerLogo, onStart, onReset, onAcceptBid }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [timeLeft, setTimeLeft] = useState(AUCTION_DURATION_MS / 1000);
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -259,14 +260,27 @@ export default function AuctionRoom({ status, events, bestPrice, bestProvider, w
             {status === 'ended' ? (
               <>
                 <p className="text-xs text-white/30">
-                  Best price found: <span className="text-green-400 font-semibold">€{bestPrice}</span>
+                  Best: <span className="text-green-400 font-semibold">€{bestPrice}</span> from {winnerLogo} {bestProvider}
                 </p>
-                <button
-                  onClick={onReset}
-                  className="text-xs text-white/30 hover:text-white/60 transition-colors"
-                >
-                  Run again
-                </button>
+                <div className="flex items-center gap-2">
+                  {onAcceptBid && bestPrice && bestProvider && winnerLogo && (
+                    <button
+                      onClick={() => onAcceptBid({
+                        name: `Winning bid from ${bestProvider}`,
+                        price: bestPrice,
+                        currency: 'EUR',
+                        providerName: bestProvider,
+                        providerLogo: winnerLogo,
+                      })}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#9945FF]/20 border border-[#9945FF]/40 text-[#9945FF] text-xs hover:bg-[#9945FF]/30 transition-colors"
+                    >
+                      <span>◎</span> Accept
+                    </button>
+                  )}
+                  <button onClick={onReset} className="text-xs text-white/25 hover:text-white/50 transition-colors">
+                    Again
+                  </button>
+                </div>
               </>
             ) : (
               <>
