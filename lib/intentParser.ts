@@ -1,26 +1,17 @@
-/**
- * Intent Parser — uses Claude to convert natural language into structured intent.
- *
- * The AI extracts: category, budget, currency, constraints, keywords,
- * and optional routing fields (origin/destination for flights).
- */
-
 import Anthropic from '@anthropic-ai/sdk';
 import type { ParsedIntent } from './types';
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM_PROMPT = `You are an intent parser for a shopping/service discovery engine.
-Your job is to extract structured data from a natural language user query.
-Always respond with ONLY valid JSON — no markdown, no explanation, no extra text.
+const SYSTEM_PROMPT = `You are an intent parser for a discovery engine.
+Extract structured data from a natural language user query.
+Respond with ONLY valid JSON — no markdown, no explanation.
 
 JSON shape:
 {
-  "category": "electronics" | "flights" | "freelance" | "general",
+  "category": string,
   "budget": number | null,
-  "currency": string (ISO 4217, e.g. "EUR", "USD", "GBP"),
+  "currency": string,
   "constraints": string[],
   "keywords": string[],
   "timeframe": string | null,
@@ -28,18 +19,23 @@ JSON shape:
   "destination": string | null
 }
 
+Category must be exactly one of:
+- "electronics"  → phones, laptops, tablets, headphones, cameras, TVs
+- "flights"      → air travel, tickets from A to B
+- "freelance"    → hiring someone: designers, developers, writers
+- "hotels"       → accommodation, hotels, Airbnb, resorts, stays
+- "cars"         → car rental, buying a car, vehicle hire
+- "restaurants"  → dining, food, reservations, cafes
+- "software"     → SaaS, apps, tools, subscriptions, platforms
+- "general"      → anything else
+
 Rules:
-- "category" must be exactly one of the four options.
-  - electronics: phones, laptops, tablets, headphones, cameras, etc.
-  - flights: airplane travel, trip from A to B
-  - freelance: hiring someone — designers, developers, writers, etc.
-  - general: anything else
-- "budget" should be a number (no currency symbol). If no budget mentioned, use null.
+- "budget" is a number only (no symbols). Null if not mentioned.
 - "currency" defaults to "EUR" if not specified.
-- "constraints" are adjectives/requirements the user mentioned ("lightweight", "for programming", "non-stop", etc.)
-- "keywords" are the main product/service nouns ("laptop", "logo design", "flight", etc.)
-- "origin" / "destination" only for flight queries.
-- Keep constraints and keywords concise (2–5 words max each).`;
+- "constraints" are requirements: ["under 1kg", "for programming", "non-stop", "vegan"]
+- "keywords" are the main nouns: ["laptop", "logo design", "hotel", "project management"]
+- "origin" / "destination" for flights only.
+- Keep each constraint/keyword under 5 words.`;
 
 export async function parseIntent(query: string): Promise<ParsedIntent> {
   try {
@@ -65,31 +61,26 @@ export async function parseIntent(query: string): Promise<ParsedIntent> {
       raw: query,
     };
   } catch (err) {
-    // Graceful fallback — heuristic parsing if Claude is unavailable
     console.error('[intentParser] Claude call failed, using fallback:', err);
     return heuristicFallback(query);
   }
 }
 
-/** Fast heuristic fallback used when Claude is unavailable */
 function heuristicFallback(query: string): ParsedIntent {
   const lower = query.toLowerCase();
 
-  // Detect category
   const category =
-    /laptop|phone|tablet|headphone|camera|pc|computer|macbook|samsung|apple/.test(lower)
-      ? 'electronics'
-      : /flight|fly|ticket|travel|airport|from .+ to/.test(lower)
-      ? 'flights'
-      : /design|developer|writer|freelanc|hire|logo|website/.test(lower)
-      ? 'freelance'
-      : 'general';
+    /laptop|phone|tablet|headphone|camera|pc|computer|macbook/.test(lower) ? 'electronics' :
+    /flight|fly|ticket|travel|airport|from .+ to/.test(lower)              ? 'flights'     :
+    /hotel|airbnb|stay|accommodation|resort|hostel/.test(lower)            ? 'hotels'      :
+    /car rental|rent a car|hire a car|sixt|hertz/.test(lower)              ? 'cars'        :
+    /restaurant|dinner|lunch|eat|reserve|dining/.test(lower)               ? 'restaurants' :
+    /notion|slack|figma|saas|software|subscription|tool/.test(lower)       ? 'software'    :
+    /design|developer|writer|freelanc|hire|logo/.test(lower)               ? 'freelance'   :
+    'general';
 
-  // Extract budget (first number found after €/$)
   const budgetMatch = query.match(/[€$£]?\s*(\d[\d,]*)/);
   const budget = budgetMatch ? parseFloat(budgetMatch[1].replace(',', '')) : undefined;
-
-  // Detect currency
   const currency = query.includes('$') ? 'USD' : query.includes('£') ? 'GBP' : 'EUR';
 
   return {

@@ -1,49 +1,40 @@
 /**
- * POST /api/intent
+ * POST /api/intent — streaming NDJSON pipeline
  *
- * Main pipeline:
- *   1. Parse natural language query → structured intent  (Claude)
- *   2. Fetch offers from mock providers
- *   3. Rank offers algorithmically
- *   4. Generate AI reasoning for each top result         (Claude)
- *   5. Return IntentResponse
+ * Emits newline-delimited JSON events:
+ *   {"type":"intent",  "data": ParsedIntent}
+ *   {"type":"stats",   "data": {totalProviders, totalOffers}}
+ *   {"type":"result",  "data": RankedResult}   ← one per top offer
+ *   {"type":"done",    "data": {searchTimeMs}}
+ *   {"type":"error",   "data": string}
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { parseIntent } from '@/lib/intentParser';
 import { fetchAllOffers } from '@/lib/providers';
 import { rankOffers } from '@/lib/rankingEngine';
-import type { IntentRequest, IntentResponse, RankedResult } from '@/lib/types';
+import type { IntentRequest, RankedResult } from '@/lib/types';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── Reasoning layer ────────────────────────────────────────────────────────
 
-async function generateReasoning(
-  results: RankedResult[],
-  query: string,
-): Promise<RankedResult[]> {
-  // Build a compact list of offers for Claude to reason about
-  const offerSummaries = results
-    .map((r, i) => {
-      const { offer, matchFactors } = r;
-      return `#${i + 1} ${offer.name} (${offer.providerName}) — €${offer.price}
-  Features: ${offer.features.slice(0, 4).join(', ')}
-  Budget match: ${matchFactors.budgetMatch}/100, Relevance: ${matchFactors.relevance}/100, Quality: ${matchFactors.quality}/100`;
-    })
-    .join('\n\n');
+async function generateReasoning(results: RankedResult[], query: string): Promise<RankedResult[]> {
+  const offerSummaries = results.map((r, i) => {
+    const { offer, matchFactors } = r;
+    return `#${i + 1} ${offer.name} (${offer.providerName}) — €${offer.price}
+Features: ${offer.features.slice(0, 4).join(', ')}
+Scores — Budget: ${matchFactors.budgetMatch}/100, Relevance: ${matchFactors.relevance}/100, Quality: ${matchFactors.quality}/100`;
+  }).join('\n\n');
 
-  const prompt = `User's intent: "${query}"
+  const prompt = `User intent: "${query}"
 
-Here are the top ${results.length} matching offers:
-
+Top ${results.length} offers:
 ${offerSummaries}
 
-For each offer (#1 through #${results.length}), write a single concise sentence (max 15 words) explaining why it matches the user's need.
-Focus on the most relevant benefit for THIS specific user.
-Reply ONLY with a JSON array of strings in order, no markdown:
-["reason for #1", "reason for #2", ...]`;
+Write one concise sentence (max 15 words) per offer explaining why it matches this user's specific need.
+Reply ONLY with a JSON array of strings: ["reason 1", "reason 2", ...]`;
 
   try {
     const response = await client.messages.create({
@@ -51,90 +42,95 @@ Reply ONLY with a JSON array of strings in order, no markdown:
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],
     });
-
     const text = response.content[0].type === 'text' ? response.content[0].text.trim() : '[]';
     const reasons: string[] = JSON.parse(text);
-
-    return results.map((r, i) => ({
-      ...r,
-      reasoning: reasons[i] ?? buildFallbackReasoning(r, query),
-    }));
+    return results.map((r, i) => ({ ...r, reasoning: reasons[i] ?? fallbackReason(r, query) }));
   } catch {
-    // Fallback: generate template-based reasoning
-    return results.map((r) => ({
-      ...r,
-      reasoning: buildFallbackReasoning(r, query),
-    }));
+    return results.map((r) => ({ ...r, reasoning: fallbackReason(r, query) }));
   }
 }
 
-/** Template-based fallback reasoning if Claude is unavailable */
-function buildFallbackReasoning(result: RankedResult, query: string): string {
+function fallbackReason(result: RankedResult, query: string): string {
   const { offer, matchFactors } = result;
   const parts: string[] = [];
-
-  if (matchFactors.budgetMatch >= 80) {
-    parts.push(`fits your budget at €${offer.price}`);
-  } else if (matchFactors.budgetMatch < 50) {
-    parts.push(`slightly over budget but offers premium value`);
-  }
-
-  if (matchFactors.quality >= 80) {
-    parts.push(`top-rated with ${offer.reviewCount?.toLocaleString()} reviews`);
-  }
-
-  if (offer.features.length > 0) {
-    parts.push(offer.features[0].toLowerCase());
-  }
-
-  return parts.length > 0
-    ? `Matches your intent: ${parts.join(', ')}.`
-    : `Best overall match for "${query.slice(0, 40)}".`;
+  if (matchFactors.budgetMatch >= 80) parts.push(`fits your budget at €${offer.price}`);
+  if (matchFactors.quality >= 80 && offer.rating) parts.push(`top-rated ${offer.rating}/5`);
+  if (offer.features[0]) parts.push(offer.features[0].toLowerCase());
+  return parts.length ? `Matches your intent: ${parts.join(', ')}.` : `Best overall match for "${query.slice(0, 35)}".`;
 }
 
-// ── Route handler ──────────────────────────────────────────────────────────
+// ── Streaming handler ──────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const start = Date.now();
+  const startTime = Date.now();
+  const encoder = new TextEncoder();
 
-  try {
-    const body: IntentRequest = await req.json();
-    const { query } = body;
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (data: object) => {
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
+        } catch {
+          // controller already closed
+        }
+      };
 
-    if (!query?.trim()) {
-      return NextResponse.json({ error: 'query is required' }, { status: 400 });
-    }
+      try {
+        const body: IntentRequest = await req.json();
+        const { query, refinement } = body;
 
-    // Step 1: Parse intent
-    const intent = await parseIntent(query.trim());
+        if (!query?.trim()) {
+          send({ type: 'error', data: 'query is required' });
+          controller.close();
+          return;
+        }
 
-    // Step 2: Fetch from providers
-    const { offers, totalProviders } = fetchAllOffers(intent);
+        // Build effective query (original + optional refinement)
+        const effectiveQuery = refinement?.trim()
+          ? `${query.trim()}. Additional requirement: ${refinement.trim()}`
+          : query.trim();
 
-    if (offers.length === 0) {
-      return NextResponse.json({ error: 'No offers found for this query' }, { status: 404 });
-    }
+        // Step 1: Parse intent
+        const intent = await parseIntent(effectiveQuery);
+        intent.raw = query.trim(); // always show the original query
+        send({ type: 'intent', data: intent });
 
-    // Step 3: Rank
-    const rankedResults = rankOffers(offers, intent, 5);
+        // Step 2: Fetch from providers
+        const { offers, totalProviders } = fetchAllOffers(intent);
+        send({ type: 'stats', data: { totalProviders, totalOffers: offers.length } });
 
-    // Step 4: Generate AI reasoning
-    const resultsWithReasoning = await generateReasoning(rankedResults, query);
+        if (offers.length === 0) {
+          send({ type: 'error', data: 'No offers found for this query.' });
+          controller.close();
+          return;
+        }
 
-    const response: IntentResponse = {
-      intent,
-      results: resultsWithReasoning,
-      totalProviders,
-      totalOffers: offers.length,
-      searchTimeMs: Date.now() - start,
-    };
+        // Step 3: Rank
+        const ranked = rankOffers(offers, intent, 5);
 
-    return NextResponse.json(response);
-  } catch (error) {
-    console.error('[/api/intent] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: String(error) },
-      { status: 500 },
-    );
-  }
+        // Step 4: Generate AI reasoning (batched)
+        const withReasoning = await generateReasoning(ranked, effectiveQuery);
+
+        // Step 5: Stream results one by one (staggered for visual effect)
+        for (const result of withReasoning) {
+          send({ type: 'result', data: result });
+          await new Promise((r) => setTimeout(r, 180));
+        }
+
+        send({ type: 'done', data: { searchTimeMs: Date.now() - startTime } });
+      } catch (err) {
+        send({ type: 'error', data: String(err) });
+      } finally {
+        try { controller.close(); } catch { /* already closed */ }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }
