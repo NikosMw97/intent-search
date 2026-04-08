@@ -6,12 +6,15 @@ import Logo from '@/components/Logo';
 import { useFollowedProviders } from '@/hooks/useFollowedProviders';
 import { getPromotedProviders, togglePromoted } from '@/lib/promotedProviders';
 import { getReputation, getReputationColor, getBadgeLabel } from '@/lib/providerReputation';
+import { saveFlashDeal, getFlashDeals, formatTimeLeft } from '@/lib/flashDeals';
+import type { FlashDeal } from '@/lib/flashDeals';
 
 interface RegisteredProvider {
   id: string;
   name: string;
   category: string;
   website: string;
+  offerDescription: string;
   registeredAt: number;
 }
 
@@ -30,9 +33,16 @@ const CATEGORIES = ['Electronics', 'Flights', 'Freelance', 'Hotels', 'Cars', 'Re
 
 export default function ProvidersPage() {
   const [registered, setRegistered] = useState<RegisteredProvider[]>([]);
-  const [form, setForm] = useState({ name: '', category: '', website: '' });
+  const [form, setForm] = useState({ name: '', category: '', website: '', offerDescription: '' });
   const [submitted, setSubmitted] = useState(false);
   const [promotedSet, setPromotedSet] = useState<Set<string>>(new Set());
+  const [generatingOffer, setGeneratingOffer] = useState(false);
+
+  // Flash deals state
+  const [flashDeals, setFlashDeals] = useState<FlashDeal[]>([]);
+  const [dealForm, setDealForm] = useState({ providerName: '', discountPercent: '', title: '', hours: '4' });
+  const [dealSubmitted, setDealSubmitted] = useState(false);
+  const [dealTick, setDealTick] = useState(0);
 
   const { isFollowing, toggle: toggleFollow } = useFollowedProviders();
 
@@ -43,6 +53,14 @@ export default function ProvidersPage() {
     } catch { /* ignore */ }
     // Load promoted providers
     setPromotedSet(getPromotedProviders());
+    // Load flash deals
+    setFlashDeals(getFlashDeals());
+  }, []);
+
+  // Tick to update flash deal timers
+  useEffect(() => {
+    const interval = setInterval(() => setDealTick((t) => t + 1), 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleRegister = (e: React.FormEvent) => {
@@ -50,20 +68,63 @@ export default function ProvidersPage() {
     if (!form.name || !form.category) return;
     const newProvider: RegisteredProvider = {
       id: crypto.randomUUID(),
-      ...form,
+      name: form.name,
+      category: form.category,
+      website: form.website,
+      offerDescription: form.offerDescription,
       registeredAt: Date.now(),
     };
     const updated = [newProvider, ...registered];
     setRegistered(updated);
     try { localStorage.setItem('intent_providers', JSON.stringify(updated)); } catch { /* ignore */ }
-    setForm({ name: '', category: '', website: '' });
+    setForm({ name: '', category: '', website: '', offerDescription: '' });
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
+  };
+
+  const handleGenerateOffer = async () => {
+    if (!form.name || !form.category) return;
+    setGeneratingOffer(true);
+    try {
+      const res = await fetch('/api/generate-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerName: form.name, category: form.category, website: form.website || undefined }),
+      });
+      const data = await res.json() as { description: string };
+      setForm((f) => ({ ...f, offerDescription: data.description }));
+    } catch { /* ignore */ } finally {
+      setGeneratingOffer(false);
+    }
   };
 
   const handleTogglePromote = (providerName: string) => {
     togglePromoted(providerName);
     setPromotedSet(getPromotedProviders());
+  };
+
+  const handlePostDeal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const { providerName, discountPercent, title, hours } = dealForm;
+    if (!providerName || !discountPercent || !title) return;
+
+    // Find provider logo from known providers or use default
+    const knownProvider = [...MOCK_PROVIDERS, ...registered.map(r => ({ name: r.name, logo: '🆕' }))].find(p => p.name === providerName);
+    const providerLogo = knownProvider ? ('logo' in knownProvider ? knownProvider.logo : '🆕') : '⚡';
+
+    const newDeal = saveFlashDeal({
+      providerName,
+      providerLogo,
+      title,
+      description: 'Flash deal',
+      discountPercent: Number(discountPercent),
+      expiresAt: Date.now() + Number(hours) * 3600000,
+      category: 'general',
+    });
+    setFlashDeals((prev) => [newDeal, ...prev]);
+    setDealForm({ providerName: '', discountPercent: '', title: '', hours: '4' });
+    setDealSubmitted(true);
+    setTimeout(() => setDealSubmitted(false), 3000);
   };
 
   const allProviders = [
@@ -73,6 +134,9 @@ export default function ProvidersPage() {
       intentsServed: 0, winRate: '—', logo: '🆕',
     })),
   ];
+
+  // Suppress dealTick unused warning — it's used to re-render timers
+  void dealTick;
 
   return (
     <div className="min-h-screen">
@@ -237,6 +301,26 @@ export default function ProvidersPage() {
                       className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-purple-500/50 transition-colors"
                     />
                   </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs text-white/40 uppercase tracking-wider">Offer description</label>
+                      <button
+                        type="button"
+                        onClick={handleGenerateOffer}
+                        disabled={generatingOffer || !form.name || !form.category}
+                        className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 disabled:opacity-40 transition-colors"
+                      >
+                        {generatingOffer ? '⏳ Generating…' : '✨ Generate with AI'}
+                      </button>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={form.offerDescription}
+                      onChange={(e) => setForm({ ...form, offerDescription: e.target.value })}
+                      placeholder="Describe what makes your offering unique…"
+                      className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-purple-500/50 transition-colors resize-none"
+                    />
+                  </div>
                   <button
                     type="submit"
                     className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white text-sm font-medium transition-all shadow-lg shadow-purple-900/30"
@@ -270,6 +354,120 @@ export default function ProvidersPage() {
             </div>
           </div>
         </div>
+
+        {/* Flash Deals Section */}
+        <div className="mt-10">
+          <h2 className="text-sm font-semibold text-white mb-3">⚡ Flash Deals</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Post a flash deal */}
+            <div className="rounded-2xl border border-orange-500/20 bg-surface p-5">
+              <p className="text-sm font-semibold text-white mb-1">Post a Flash Deal</p>
+              <p className="text-xs text-white/35 mb-4">Create a time-limited discount that appears on matching result cards.</p>
+
+              {dealSubmitted ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center animate-fade-in">
+                  <div className="text-3xl mb-2">⚡</div>
+                  <p className="text-white font-semibold mb-1">Flash deal is live!</p>
+                  <p className="text-xs text-white/40">It will appear on matching provider cards.</p>
+                </div>
+              ) : (
+                <form onSubmit={handlePostDeal} className="space-y-3">
+                  <div>
+                    <label className="text-xs text-white/40 uppercase tracking-wider block mb-1.5">Provider Name</label>
+                    <input
+                      required
+                      value={dealForm.providerName}
+                      onChange={(e) => setDealForm({ ...dealForm, providerName: e.target.value })}
+                      placeholder="e.g. TechMart"
+                      className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-orange-500/50 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-white/40 uppercase tracking-wider block mb-1.5">Deal Title</label>
+                    <input
+                      required
+                      value={dealForm.title}
+                      onChange={(e) => setDealForm({ ...dealForm, title: e.target.value })}
+                      placeholder="e.g. 20% off all laptops"
+                      className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-orange-500/50 transition-colors"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-white/40 uppercase tracking-wider block mb-1.5">Discount %</label>
+                      <input
+                        required
+                        type="number"
+                        min={1}
+                        max={90}
+                        value={dealForm.discountPercent}
+                        onChange={(e) => setDealForm({ ...dealForm, discountPercent: e.target.value })}
+                        placeholder="15"
+                        className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-orange-500/50 transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/40 uppercase tracking-wider block mb-1.5">Duration (hours)</label>
+                      <input
+                        required
+                        type="number"
+                        min={1}
+                        max={72}
+                        value={dealForm.hours}
+                        onChange={(e) => setDealForm({ ...dealForm, hours: e.target.value })}
+                        className="w-full bg-white/4 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-orange-500/50 transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-orange-700 hover:from-orange-500 hover:to-orange-600 text-white text-sm font-medium transition-all"
+                  >
+                    ⚡ Post Flash Deal
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Active flash deals list */}
+            <div>
+              <div className="rounded-2xl border border-white/8 bg-surface overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/6">
+                  <p className="text-xs font-semibold text-white/60 uppercase tracking-wider">Active Deals ({flashDeals.length})</p>
+                </div>
+                {flashDeals.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-xs text-white/25">No active flash deals. Post one to get started.</p>
+                  </div>
+                ) : (
+                  flashDeals.map((deal, i) => (
+                    <div key={deal.id} className={`px-4 py-3 ${i > 0 ? 'border-t border-white/6' : ''}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <span className="text-sm">{deal.providerLogo}</span>
+                            <p className="text-xs font-semibold text-white">{deal.providerName}</p>
+                            <span className="px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-300 text-xs font-semibold">
+                              {deal.discountPercent}% off
+                            </span>
+                          </div>
+                          <p className="text-xs text-white/50 truncate">{deal.title}</p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <span className="text-xs text-orange-400/70 font-mono whitespace-nowrap">
+                            {formatTimeLeft(deal.expiresAt)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
       </main>
     </div>
   );

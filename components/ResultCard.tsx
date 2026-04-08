@@ -1,8 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import type { RankedResult } from '@/lib/types';
 import { predictPrice } from '@/lib/pricePrediction';
 import { getReputation, getReputationColor, getBadgeLabel } from '@/lib/providerReputation';
+import { getProviderDeal } from '@/lib/flashDeals';
+import FlashDealBadge from '@/components/FlashDealBadge';
 
 interface Props {
   result: RankedResult;
@@ -14,6 +17,8 @@ interface Props {
   onToggleFollow?: (providerName: string) => void;
   isSponsored?: boolean;
   onAutofill?: () => void;
+  onChat?: () => void;
+  isWinner?: boolean;
 }
 
 const BADGE_CONFIG = {
@@ -36,7 +41,7 @@ function ScoreBar({ label, value }: { label: string; value: number }) {
   );
 }
 
-export default function ResultCard({ result, rank, isSelected, onToggleCompare, style, isFollowing, onToggleFollow, isSponsored, onAutofill }: Props) {
+export default function ResultCard({ result, rank, isSelected, onToggleCompare, style, isFollowing, onToggleFollow, isSponsored, onAutofill, onChat, isWinner }: Props) {
   const { offer, score, reasoning, matchFactors, badge } = result;
   const badgeCfg = badge ? BADGE_CONFIG[badge] : null;
   const sym = offer.currency === 'USD' ? '$' : offer.currency === 'GBP' ? '£' : '€';
@@ -47,17 +52,32 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
   // Provider reputation
   const rep = getReputation(offer.providerName);
 
+  // Flash deal — lazy via useState initializer so it only reads localStorage once on mount
+  const [flashDeal] = useState(() =>
+    typeof window !== 'undefined' ? getProviderDeal(offer.providerName) : null
+  );
+
   return (
     <div
-      className={`relative group rounded-2xl border transition-all duration-300 overflow-hidden animate-slide-up ${
+      className={`relative group rounded-2xl border transition-all duration-300 overflow-hidden animate-slide-in-up ${
         isSelected
           ? 'border-purple-500/60 bg-purple-500/8'
           : 'border-white/8 bg-surface hover:border-purple-500/30 hover:bg-surface-2'
-      }`}
+      } ${isWinner ? 'animate-winner-glow' : ''}`}
       style={style}
     >
       {rank === 1 && (
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-500 to-transparent" />
+      )}
+
+      {/* Winner crown badge */}
+      {isWinner && (
+        <div className="absolute top-3 right-3 z-10">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/25 border border-purple-500/40 text-xs text-purple-300">
+            <span>🏆</span>
+            <span className="font-semibold">Top Pick</span>
+          </div>
+        </div>
       )}
 
       <div className="p-5">
@@ -136,6 +156,13 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
           </div>
         </div>
 
+        {/* Flash deal badge */}
+        {flashDeal && (
+          <div className="mb-3">
+            <FlashDealBadge deal={flashDeal} />
+          </div>
+        )}
+
         {/* Price prediction badge */}
         <div className="mb-3">
           <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border ${
@@ -191,7 +218,15 @@ export default function ResultCard({ result, rank, isSelected, onToggleCompare, 
             <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
             <span className="text-xs text-white/40">{offer.availability ?? 'Available'}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {onChat && (
+              <button
+                onClick={onChat}
+                className="px-3 py-1.5 rounded-lg border border-white/10 text-white/40 text-xs hover:border-purple-500/30 hover:text-white/70 transition-all flex items-center gap-1"
+              >
+                💬 Chat
+              </button>
+            )}
             <button
               className="px-3 py-1.5 rounded-lg border border-[#9945FF]/30 text-[#9945FF] text-xs hover:bg-[#9945FF]/10 transition-colors flex items-center gap-1.5"
               onClick={(e) => e.preventDefault()}

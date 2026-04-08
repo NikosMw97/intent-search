@@ -19,6 +19,8 @@ import NegotiationPanel from '@/components/NegotiationPanel';
 import IntentExplainer from '@/components/IntentExplainer';
 import PriceAlertBanner from '@/components/PriceAlertBanner';
 import AutofillModal from '@/components/AutofillModal';
+import ProviderChatModal from '@/components/ProviderChatModal';
+import OnboardingTour, { shouldShowTour } from '@/components/OnboardingTour';
 import { useIntentStream } from '@/hooks/useIntentStream';
 import { useIntentHistory } from '@/hooks/useIntentHistory';
 import { useAuction } from '@/hooks/useAuction';
@@ -113,12 +115,20 @@ export default function Home() {
   const [autofillOffer, setAutofillOffer] = useState<{
     name: string; price: number; currency: string; providerName: string; providerLogo: string;
   } | null>(null);
+  const [chatOffer, setChatOffer] = useState<{
+    provider: { name: string; logo: string };
+    offer: { name: string; price: number };
+  } | null>(null);
+  const [showTour, setShowTour] = useState(false);
 
   const auction = useAuction(intent);
   const { alerts, dismiss: dismissAlert } = usePriceAlerts(history);
   const { triggeredCount } = useSubscriptions();
   const bundle = useBundleSearch();
   const [showBundle, setShowBundle] = useState(false);
+
+  // ── Onboarding tour ───────────────────────────────────────────────────────
+  useEffect(() => { setShowTour(shouldShowTour()); }, []);
 
   // ── URL sharing: read ?q= on load ────────────────────────────────────────
   useEffect(() => {
@@ -543,6 +553,7 @@ export default function Home() {
                     isFollowing={isFollowing(result.offer.providerName)}
                     onToggleFollow={toggleFollow}
                     isSponsored={result.isSponsored}
+                    isWinner={result.rank === 1}
                     style={{ animationDelay: `${i * 80}ms` }}
                     onAutofill={() => setAutofillOffer({
                       name: result.offer.name,
@@ -550,6 +561,10 @@ export default function Home() {
                       currency: '€',
                       providerName: result.offer.providerName,
                       providerLogo: result.offer.providerLogo ?? '',
+                    })}
+                    onChat={() => setChatOffer({
+                      provider: { name: result.offer.providerName, logo: result.offer.providerLogo ?? result.offer.providerName[0] },
+                      offer: { name: result.offer.name, price: result.offer.price },
                     })}
                   />
                 ))}
@@ -598,6 +613,18 @@ export default function Home() {
       {autofillOffer && (
         <AutofillModal offer={autofillOffer} onClose={() => setAutofillOffer(null)} />
       )}
+
+      {/* ── Provider chat modal ────────────────────────────────────────────── */}
+      {chatOffer && (
+        <ProviderChatModal
+          provider={chatOffer.provider}
+          offer={chatOffer.offer}
+          onClose={() => setChatOffer(null)}
+        />
+      )}
+
+      {/* ── Onboarding tour ────────────────────────────────────────────────── */}
+      {showTour && <OnboardingTour onDone={() => setShowTour(false)} />}
 
       {/* ── Floating compare bar ───────────────────────────────────────────── */}
       {compareIds.size >= 2 && !showCompare && (
